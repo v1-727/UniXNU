@@ -3,6 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
+import platform
 import re
 import shutil
 import struct
@@ -63,7 +64,9 @@ def require(value, message):
 obj = obj_path.read_bytes()
 om = np.macho(obj)
 require(om['kind'] == 1, 'Expected an ordinary ARM64 reference object')
-dwarf = subprocess.check_output(['xcrun', 'dwarfdump', '--name=IOBlockStorageDevice', '--show-children', obj_path], text=True)
+# Xcode's dwarfdump is llvm-dwarfdump; Linux hosts run the distribution's copy directly.
+DWARFDUMP = ['xcrun', 'dwarfdump'] if platform.system() == 'Darwin' else ['llvm-dwarfdump']
+dwarf = subprocess.check_output([*DWARFDUMP, '--name=IOBlockStorageDevice', '--show-children', obj_path], text=True)
 class_size = re.search(r'DW_AT_name\s+\("IOBlockStorageDevice"\)[\s\S]{0,200}?DW_AT_byte_size\s+\((0x[0-9a-f]+)\)', dwarf)
 require(class_size and int(class_size[1], 16) == 0x90, 'Actual compiled public class size changed')
 version_command = next(at for command, at, size in om['commands'] if command == 0x32)
@@ -182,7 +185,18 @@ require(d['kernel_sha256'] == plan['candidate_sha256'] and not d['bounded_timeou
 actual = bytes.fromhex(d['memory'][f'{meta:x}:50'])
 service = bytes.fromhex(d['memory'][f'{service_meta:x}:50'])
 # The companion AES audit derives these member offsets from actual OSMetaClass DWARF.
-layout = json.loads((ROOT / 'build/image4-ignition/aes-interface-audit.json').read_text())['compiled_metaclass_offsets']
+aes_audit = ROOT / 'build/image4-ignition/aes-interface-audit.json'
+if aes_audit.is_file():
+    layout = json.loads(aes_audit.read_text())['compiled_metaclass_offsets']
+else:
+    # Without the AES audit (it needs a KDK reference), derive the offsets from the same compiled OSMetaClass DWARF it reads.
+    metaclass = ROOT / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/libkern/DEVELOPMENT/OSMetaClass.cpo'
+    layout = {}
+    for member in subprocess.check_output([*DWARFDUMP, '--name=OSMetaClass', '--show-children', metaclass], text=True).split('DW_TAG_member')[1:]:
+        name = re.search(r'DW_AT_name\s+\("([^"]+)"\)', member)
+        position = re.search(r'DW_AT_data_member_location\s+\((0x[0-9a-f]+)\)', member)
+        if name and position and name[1] in ('superClassLink', 'className', 'classSize'):
+            layout[name[1]] = int(position[1], 16)
 require(layout == dict(superClassLink=16, className=24, classSize=32), 'Compiled metaclass ABI changed')
 require(struct.unpack_from('<Q', actual, layout['superClassLink'])[0] == service_meta and
         struct.unpack_from('<I', actual, layout['classSize'])[0] == 0x90 and

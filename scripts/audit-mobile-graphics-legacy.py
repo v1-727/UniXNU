@@ -15,9 +15,11 @@ FAMILY_TEXT_SHA='2e044ee68c1650397e1435234ca6459206262e4c7ed709cb7131c6f664f9bd9
 if not path.exists():
     # Build products are pruned: any later candidate built from the same original kernelcache carries the identical original
     # IOMobileGraphicsFamily executable (checked by hash below), and every layout check in this audit runs against it.
+    # The UFS root candidate every port builds is checked first, as in build-sheng-platform-power.py.
     later=sorted((ROOT/'build/xnu-prelink').glob('native-owner-ufs-cpu-desktop-*-candidate.macho'),key=lambda f:f.stat().st_mtime)
-    require(later,'No reference candidate available')
-    path=later[-1]
+    rootauth=ROOT/'build/xnu-prelink/native-owner-ufs-rootauth3-candidate.macho'
+    require(later or rootauth.exists(),'No reference candidate available')
+    path=rootauth if rootauth.exists() else later[-1]
 blob=path.read_bytes();plan=json.loads(path.with_suffix('.json').read_text());image=macho(blob)
 require(hashlib.sha256(blob).hexdigest()==plan['candidate_sha256'] and
         (plan['candidate_sha256']=='aded28d3c61dafaf7b8a7c96b14427a798e9e95470ae6f287bcd038c07626798' or
@@ -57,6 +59,7 @@ for i,va in enumerate(legacy):
     if i>=168 and i not in pure:require(text['va']<=va<text['va']+text['size'],'Original family owns inherited generic method')
 runtime=ROOT/'build/darwinboot-owner-hvf-mobile-graphics-legacy-class/gdb-stop.json'
 out=ROOT/'build/display-analysis/mobile-graphics-legacy-abi.json'
+out.parent.mkdir(parents=True,exist_ok=True)
 RUNTIME_SHA='3044c2beff552911605994c0dc7aa73182066cbb5aed0b396999ceeb5a96da2b'
 if runtime.exists():
     d=json.loads(runtime.read_text());args=[int(v,16) for v in d['function_entry_arguments']]
@@ -68,7 +71,8 @@ if runtime.exists():
 else:
     # The QEMU observation of the original class (identity IOMobileFramebufferLegacy, parent 0xfffffff006b31400, object size 0x18a0)
     # was pruned. It concerns the unchanged original kernelcache, not the native kernel, so only its recorded hash is carried over.
-    require(out.exists() and json.loads(out.read_text())['runtime_metadata_checkpoint_sha256']==RUNTIME_SHA,
+    # A fresh build tree has no earlier audit; an existing one must carry the same recorded observation.
+    require(not out.exists() or json.loads(out.read_text())['runtime_metadata_checkpoint_sha256']==RUNTIME_SHA,
             'Recorded runtime observation hash')
     runtime_sha=RUNTIME_SHA
 out.write_text(json.dumps(dict(candidate_sha256=plan['candidate_sha256'],original_sha256=plan['original_sha256'],

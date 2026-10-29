@@ -133,10 +133,13 @@ for source in (ROOT / 'kits/VerifiedRoot/src/verified_root.c', ROOT / 'kits/Veri
             index += 1
         elif value in ('-MF', '-MJ'):
             index += 1
-        elif value not in ('-MD', '-MP'):
+        elif value == '-Xclang' and compile_args[index + 1].startswith('-W'):
+            index += 1
+        elif not value.startswith('-W') and value not in ('-MD', '-MP'):
             command.append(value)
         index += 1
-    command += ['-I' + str(ROOT / 'kits/VerifiedRoot/include'), '-Werror']
+    # The record's warning set is xnu's own (and differs between Apple and upstream clang); use the archive recipes' set.
+    command += ['-I' + str(ROOT / 'kits/VerifiedRoot/include'), '-Wall', '-Wextra', '-Werror']
     result = subprocess.run(command, cwd=record['directory'], capture_output=True, text=True)
     (out / (source.stem + '.log')).write_text(result.stdout + result.stderr)
     if result.returncode:

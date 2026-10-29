@@ -17,6 +17,9 @@ HID_TEXT_SHA='7e4c5104814f2e773d5be13d092dec53ee44ba5a61a81264b229780406e86b72'
 p=ROOT/'build/xnu-prelink/native-owner-ufs-cpu-desktop-v9-hid-init-candidate.macho'
 if not p.exists():
     later=sorted((ROOT/'build/xnu-prelink').glob('native-owner-ufs-cpu-desktop-*-candidate.macho'),key=lambda f:f.stat().st_mtime)
+    # A board without the desktop candidates (senna_a) keeps the UFS root-authorization candidate, built from the same originals.
+    rootauth=ROOT/'build/xnu-prelink/native-owner-ufs-rootauth3-candidate.macho'
+    if not later and rootauth.exists():later=[rootauth]
     require(later,'No reference candidate available')
     p=later[-1]
 b=p.read_bytes();plan=json.loads(p.with_suffix('.json').read_text());m=macho(b)
@@ -103,7 +106,10 @@ require(undefined==set(bindings),'All and only actual original HID imports bound
 asm=OUT/'original-bindings.S';asm.write_text(''.join(f'.globl {n}\n.set {n}, {a:#x}\n' for n,a in sorted(bindings.items())))
 sdk=run(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
 run(['xcrun','clang','-target','arm64-apple-ios17.0','-isysroot',sdk,'-c',asm,'-o',OUT/'hid-original-bindings.o'])
-llvm=Path(run(['brew','--prefix','llvm'],text=True).strip())/'bin';late=OUT/'NativeHidInput.late.o'
+import platform,shutil
+# llvm-objcopy: Homebrew's LLVM on macOS, the one on PATH elsewhere (as build-gop-legacy-display.py of the Linux boards).
+llvm=Path(shutil.which('llvm-objcopy')).parent if platform.system()!='Darwin' else Path(run(['brew','--prefix','llvm'],text=True).strip())/'bin'
+late=OUT/'NativeHidInput.late.o'
 run([llvm/'llvm-objcopy','--remove-section=__DATA,__mod_init_func','--globalize-symbol=__GLOBAL__sub_I_NativeHidInput.cpp',obj,late])
 def code(data,image):
     s=next(s for g in image['segments'] for s in g['sections'] if s['name']=='__text');return data[s['fileoff']:s['fileoff']+s['size']]
