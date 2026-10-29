@@ -6,6 +6,7 @@ Output (ignored, never committed): build/adreno-metal-plugin/NativeAdrenoMetal.b
 trust.json with its CDHash. The bundle is staged into the Data seed by add-gpu-plugin-data.py and trusted through an extra
 owner trust module (make-owner-trust-bundle.py); neither changes the original trust modules, AMFI or any Apple signature."""
 import json
+import platform
 import plistlib
 import re
 import shutil
@@ -26,8 +27,13 @@ TURNIP = ROOT / 'build/mesa-tu-ios/src/freedreno/vulkan/libvulkan_freedreno.dyli
 if not TURNIP.is_file():
     raise SystemExit('Build Turnip first: python3 scripts/build-turnip-darwin.py --target ios')
 subprocess.run(['python3', ROOT / 'scripts/gen-turnip-smoke-shaders.py'], check=True)
-# Turnip's first submission, recorded on the host, for the plugin's prefix replay (build/turnip-smoke/TurnipReplay.h).
-subprocess.run(['python3', ROOT / 'scripts/gen-turnip-replay.py'], check=True)
+# Turnip's first submission, recorded on the host, for the plugin's prefix replay (build/turnip-smoke/TurnipReplay.h). The host
+# simulation (drivers/Adreno740/tests/hostsim) is AArch64 code, so only an Apple-silicon host records it; elsewhere the plugin builds
+# without the diagnostic (NativeAdrenoUserTest.h includes the header only when it exists), never with another build's stale copy.
+if platform.machine() == 'arm64':
+    subprocess.run(['python3', ROOT / 'scripts/gen-turnip-replay.py'], check=True)
+else:
+    (ROOT / 'build/turnip-smoke/TurnipReplay.h').unlink(missing_ok=True)
 subprocess.run(['python3', ROOT / 'scripts/build-adreno-metal-bridge.py', '--target', 'ios'], check=True)
 BRIDGE = ROOT / 'build/adreno-metal-bridge/ios/libadreno_metal_bridge.a'
 pm4 = OUT / 'AdrenoPM4.o'

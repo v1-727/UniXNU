@@ -6,6 +6,8 @@ original constructor, destructor and metaclass addresses from build/gpu-analysis
 import hashlib
 import json
 from pathlib import Path
+import platform
+import shutil
 import struct
 import subprocess
 import sys
@@ -81,7 +83,8 @@ asm.write_text(''.join(f'.globl {n}\n.set {n}, {a:#x}\n' for n, a in sorted(bind
 sdk = run(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
 run(['xcrun', 'clang', '-target', 'arm64-apple-ios17.0', '-isysroot', sdk, '-c', asm, '-o', OUT / 'original-bindings.o'])
 
-llvm = Path(run(['brew', '--prefix', 'llvm'], text=True).strip()) / 'bin'
+llvm = (Path(shutil.which('llvm-objcopy')).parent if platform.system() != 'Darwin'
+        else Path(run(['brew', '--prefix', 'llvm'], text=True).strip()) / 'bin')
 late = OUT / 'NativeAdrenoAccelerator.late.o'
 run([llvm / 'llvm-objcopy', '--remove-section=__DATA,__mod_init_func',
      '--globalize-symbol=__GLOBAL__sub_I_NativeAdrenoAccelerator.cpp', obj, late])
