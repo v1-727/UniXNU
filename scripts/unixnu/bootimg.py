@@ -119,11 +119,22 @@ def build(ctx, uefi, fd, dtb, ramdisk=None, output=None):
 def verify(path, combined, tree, ramdisk_path, image):
     """Unpack the image and compare every part with its input."""
     data = Path(path).read_bytes()
-    kernel_size, kernel_address, ramdisk_size, _, second_size, _, tags, page, version, _ = struct.unpack_from('<10I', data, 8)
-    if data[:8] != b'ANDROID!' or second_size or version != image['header_version'] or page != image['pagesize']:
+    if data[:8] != b'ANDROID!':
         raise Error('boot image header does not match the requested parameters')
-    if kernel_address != image['base'] + image['kernel_offset'] or tags != image['base'] + image['tags_offset']:
-        raise Error('boot image load addresses do not match the requested offsets')
+    if image['header_version'] >= 3:
+        # v3/v4: fixed 4096-byte pages, no load addresses (the bootloader places the kernel).
+        kernel_size, ramdisk_size, _, _ = struct.unpack_from('<4I', data, 8)
+        version, page = struct.unpack_from('<I', data, 40)[0], 4096
+        if version != image['header_version']:
+            raise Error('boot image header does not match the requested parameters')
+        addresses = {}
+    else:
+        kernel_size, kernel_address, ramdisk_size, _, second_size, _, tags, page, version, _ = struct.unpack_from('<10I', data, 8)
+        if second_size or version != image['header_version'] or page != image['pagesize']:
+            raise Error('boot image header does not match the requested parameters')
+        if kernel_address != image['base'] + image['kernel_offset'] or tags != image['base'] + image['tags_offset']:
+            raise Error('boot image load addresses do not match the requested offsets')
+        addresses = {'kernel_address': hex(kernel_address), 'tags_address': hex(tags)}
     kernel = data[page:page + kernel_size]
     unpacker = zlib.decompressobj(16 + zlib.MAX_WBITS)
     if unpacker.decompress(kernel) != combined or not unpacker.eof or unpacker.unused_data != tree:
@@ -132,4 +143,4 @@ def verify(path, combined, tree, ramdisk_path, image):
     if data[start:start + ramdisk_size] != Path(ramdisk_path).read_bytes():
         raise Error('ramdisk bytes differ')
     return {'kernel_sha256': hashlib.sha256(kernel).hexdigest(), 'ramdisk_bytes': ramdisk_size,
-            'header_version': version, 'kernel_address': hex(kernel_address), 'tags_address': hex(tags)}
+            'header_version': version, **addresses}

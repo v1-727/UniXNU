@@ -59,7 +59,7 @@ def parser():
     i = sub.add_parser('bootimg', parents=[c], help='pack the boot image from the firmware volume and a device tree')
     i.add_argument('--fd', metavar='FILE', help='firmware volume with UniXNU, DarwinBoot and payload filesystem support (default: build firmware output under --uefi)')
     i.add_argument('--dtb', metavar='FILE', help='compiled device tree; or UNIXNU_DTB')
-    i.add_argument('--ramdisk', metavar='FILE', help='ramdisk image, or none (default: the payload step output when present, else empty)')
+    i.add_argument('--ramdisk', metavar='FILE', help='ramdisk image, or none (default: the payload step output when present, else the Mu-Silicium Resources/ramdisk placeholder)')
     i.add_argument('-o', '--output', metavar='FILE', help='output (default: out/<device>/boot/boot.img)')
     w = sub.add_parser('ipsw', parents=[c], help='show or extract the components of the target IPSW')
     w.add_argument('action', choices=('info', 'fetch'))
@@ -175,6 +175,10 @@ def cmd_bootimg(ctx):
     elif not ctx.args.ramdisk and payload.paths(ctx)[1].is_file():
         ramdisk = payload.paths(ctx)[1]
         log(f'ramdisk: {ramdisk} (use --ramdisk none for an empty one)')
+    if ramdisk is None and not ctx.args.ramdisk and (uefi / 'Resources/ramdisk').is_file():
+        # Mu-Silicium's placeholder: some bootloaders (e.g. header v4 ABL) refuse an empty ramdisk.
+        ramdisk = uefi / 'Resources/ramdisk'
+        log(f'ramdisk: {ramdisk} placeholder; build payload or pass --ramdisk FILE to include configured boot entries')
     if ramdisk is None:
         log('ramdisk: empty; build payload or pass --ramdisk FILE to include configured boot entries')
     bootimg.build(ctx, uefi, fd, dtb, ramdisk, expand(ctx.args.output) if ctx.args.output else None)

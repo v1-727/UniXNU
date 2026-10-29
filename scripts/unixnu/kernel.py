@@ -167,6 +167,10 @@ def build(ctx, modules):
         generated.mkdir(parents=True, exist_ok=True)
         env['UNIXNU_GENERATED_DIR'] = str(generated)
     env['JOBS'] = str(ctx.jobs)
+    uefi = ctx.option('uefi', 'UNIXNU_UEFI')
+    if uefi:
+        # Archive recipes read firmware headers such as FrameBufferSerialPortLib/Font.h, as the payload step does.
+        env['UNIXNU_UEFI'] = str(uefi)
     record = ctx.tree / 'build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/osfmk/DEVELOPMENT/startup.o.json'
     if not record.is_file():
         # The archive builders and the boot progress layer read compile records of the XNU build, which only an earlier

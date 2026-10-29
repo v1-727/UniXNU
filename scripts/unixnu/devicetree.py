@@ -326,6 +326,12 @@ def generate(dtb, config, *, unique_chip_id=None, data=False, trust=False, addon
                        '<key>IOPropertyMatch</key><dict><key>UUID</key><string>' + volume + '</string></dict></dict>\0').encode()))
     if data and not options.get('persistent_data'):
         chosen.append(('ephemeral-storage', struct.pack('<I', 1)))
+    partition = config.get('userdata', {}).get('partition')
+    if partition:
+        # The storage driver finds the root image in the LUN 0 GPT entry of this name (default "userdata").
+        if not re.fullmatch(r'[A-Za-z0-9_\-]{1,35}', partition):
+            raise Error(f'Unsupported userdata partition name: {partition}')
+        chosen.append(('userdata-partition', partition.encode() + b'\0'))
     if payload.get('text_fixups'):
         for value in payload['text_fixups']:
             if not re.fullmatch(r'[A-Za-z0-9_.\-]{1,63},[0-9a-fA-F]{1,16},(?:[0-9a-fA-F]{2}){1,16},(?:[0-9a-fA-F]{2}){1,16}', value) or len(value) >= 160:
